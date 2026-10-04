@@ -1,15 +1,15 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import Base, get_db
 
 
-def test_get_db_yields_a_session_and_closes_it():
+async def test_get_db_yields_a_session_and_closes_it():
     generator = get_db()
 
-    db = next(generator)
+    db = await anext(generator)
 
-    assert isinstance(db, Session)
-    generator.close()
+    assert isinstance(db, AsyncSession)
+    await generator.aclose()
 
 
 def test_constraints_follow_a_naming_convention():

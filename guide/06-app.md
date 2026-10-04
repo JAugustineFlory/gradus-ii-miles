@@ -1,5 +1,14 @@
 # 06 — App and error handling
 
+> **Where this fits.** **US-8**: *"As a job seeker, I want a clear
+> message when something fails, so that I know my change wasn't saved."*
+> In Tiro, a failed delete or status change was silent — the screen and
+> the database could disagree without the user knowing. `App` is the one
+> place that calls the API, so it's where every failure gets caught and
+> shown. It also wires **US-7**'s filter to the backend's `?status=`.
+> In the lesson 00 diagram, this is the whole arrow between React and
+> FastAPI, in both directions.
+
 **Goal:** an `App` that loads companies and applications, filters by
 status, handles every action's success **and** failure — and is fully
 tested without a server. **38 frontend tests** green.
@@ -8,7 +17,8 @@ tested without a server. **38 frontend tests** green.
 
 ## Contract
 
-`src/App.tsx` default-exports `App`, which renders:
+📄 `frontend/src/App.tsx` — **edit** (replace the skeleton from lesson
+01). It default-exports `App`, which renders:
 
 - an `<h1>` **Job tracker**
 - **at most one** error message, in an element with `role="alert"`
@@ -232,14 +242,15 @@ Commit: `feat(frontend): App with loading, filtering, and error handling`.
 
 ## Step 3 — Try it for real
 
-Run both servers (Tiro lesson 07, Step 6), then check in the browser:
+Start the database, then both servers (Tiro lesson 08, Step 6 — in
+Miles, the database is on port 5434), then check in the browser:
 
 - [ ] "Add a company first." shows until a company exists
 - [ ] Adding the same company twice shows **Company already exists**
-- [ ] A new application appears and survives a reload
-- [ ] The **Show** filter narrows the list
+- [ ] A new application appears and survives a reload (US-1, US-5)
+- [ ] The **Show** filter narrows the list (US-7)
 - [ ] Stop the backend and try to delete something — the error appears,
-      and the application stays
+      and the application stays (US-8)
 - [ ] Restart the backend, delete again — it works, and the error clears
 
 ### Optional polish

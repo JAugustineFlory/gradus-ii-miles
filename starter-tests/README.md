@@ -37,3 +37,16 @@ cp starter-tests/frontend/src/api.test.ts frontend/src/
 
 Copy a test file in **before** you write the code it tests, and run it
 to watch it fail. Red first, every time.
+
+## Before running backend tests
+
+The backend tests are **async** and run against the real PostgreSQL
+test database (`miles_test`, port 5434). Start it first, from the repo
+root:
+
+```bash
+docker compose up -d --wait
+```
+
+They also need `pytest-asyncio` installed and `asyncio_mode = "auto"`
+in `backend/pyproject.toml` (lesson 01, Part C).

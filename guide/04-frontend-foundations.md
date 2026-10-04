@@ -1,5 +1,20 @@
 # 04 — Frontend foundations
 
+> **Where this fits.** The backend from lessons 02–03 now speaks a new
+> shape (companies nested in applications, fixed statuses). Before any
+> screen can deliver a story, the frontend needs to speak it too. This
+> lesson builds the layer every component relies on: the types, and the
+> API module that carries each request across the arrow from React to
+> FastAPI in the lesson 00 diagram.
+>
+> | Story | What delivers it here |
+> | --- | --- |
+> | **US-8** clear message when something fails | `request` throws an error carrying the backend's `detail` |
+> | **US-9** refuse nonsense | a `Status` type the editor checks before code runs |
+>
+> Every file this lesson creates is named in its **Contract** section,
+> with its full path under `frontend/src/`.
+
 **Goal:** shared types that match the new API, `formatStatus` rebuilt,
 and an API module with one generic `request` helper — fully tested by
 **mocking `fetch`**. **12 frontend tests** green.
@@ -76,7 +91,8 @@ cp ../starter-tests/frontend/src/utils/formatStatus.test.ts src/utils/
 npm test
 ```
 
-Write `src/utils/formatStatus.ts` (Tiro lesson 06). 🟢 `2 passed`.
+📄 Write `frontend/src/utils/formatStatus.ts` (Tiro lesson 07, Steps
+5–6). 🟢 `2 passed`.
 
 ---
 
@@ -265,22 +281,24 @@ Commit: `feat(frontend): typed API module with mocked-fetch tests`.
 
 ## Step 4 — Guard the frontend
 
-Add to `.husky/pre-commit` at the repo root, **between** the backend
-lint and backend tests blocks:
+📄 **File:** `.husky/pre-commit` (repo root) — **edit**: add this
+block **between** the backend lint and backend tests blocks:
 
 ```sh
 echo "Frontend: lint and types"
 (cd frontend && npm run lint && npm run typecheck)
 ```
 
-and at the end:
+and this block at the **end of the file**:
 
 ```sh
 echo "Frontend: tests"
 (cd frontend && npm run test:run)
 ```
 
-Commit to try it: all four stages should run.
+Commit to try it: all five stages should run — database, backend lint,
+frontend lint and types, backend tests, frontend tests. (The full hook
+is listed in lesson 07.)
 
 ---
 

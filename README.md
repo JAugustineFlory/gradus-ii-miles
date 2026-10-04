@@ -22,14 +22,29 @@
 ## What you'll build
 
 The same **job application tracker** from GRADUS I, rebuilt from an
-empty folder, then taken further:
+empty folder on the same stack, then taken further.
+
+### User stories
+
+Tiro delivered **US-1** to **US-5** (record, see all, update, delete,
+persist). Miles keeps all five and adds:
+
+| ID | Story |
+| --- | --- |
+| **US-6** | As a job seeker, I want to **pick a company from a list** instead of retyping it, so that "Acme" and "ACME" don't become two companies. |
+| **US-7** | As a job seeker, I want to **filter** my applications by status, so that I can focus on what needs action. |
+| **US-8** | As a job seeker, I want a **clear message when something fails**, so that I know my change wasn't saved. |
+| **US-9** | As a job seeker, I want the tracker to **refuse nonsense input** (blank names, made-up statuses), so that my data stays trustworthy. |
+
+What that means in practice:
 
 - **Companies** become their own table. An application belongs to one
-  company; a company has many applications.
-- **Status** is limited to four values, checked on both ends.
-- **Blank and padded input** is cleaned or rejected.
+  company; a company has many applications. (US-6)
+- **Status** is limited to four values, checked on both ends. (US-9)
+- **Blank and padded input** is cleaned or rejected. (US-9)
 - The list can be **filtered** by status (and, in the API, by company).
-- **Every user action** shows a clear error if it fails.
+  (US-7)
+- **Every user action** shows a clear error if it fails. (US-8)
 - **Every file** is covered by tests, including the ones that talk to
   the network.
 
@@ -47,13 +62,31 @@ reveal one at a time, and links to the official docs.
 
 ---
 
+## The stack
+
+The same as Tiro.
+
+| Backend | Frontend | Workflow |
+| --- | --- | --- |
+| Python, uv | TypeScript | Git, GitHub |
+| FastAPI, Pydantic | React, Vite | Husky |
+| SQLAlchemy (async), asyncpg | Vitest, React Testing Library | Ruff, ESLint, Prettier |
+| Alembic | | VS Code |
+| PostgreSQL in Docker (port **5434**) | | |
+| pytest, pytest-asyncio, pytest-cov | | |
+
+Miles's database runs on host port **5434** (Tiro used 5433), so both
+projects can run at the same time.
+
+---
+
 ## How Miles is different from Tiro
 
 In Tiro, you read a worked example, then typed it. In Miles:
 
 1. You **copy in a provided test file** and run it. It fails.
 2. You read the **contract** and the **pseudocode** for the new idea.
-3. You **write the real code yourself**.
+3. You **write the real code yourself**, in the file the contract names.
 4. If you're stuck, open the **hints** in order. Each gives a little
    more. The last one is close to the answer — try hard before opening
    it.
@@ -69,9 +102,11 @@ appear. Concepts you already practiced in Tiro get a checklist only.
 ### Reinforced from Tiro (practice without the worked examples)
 
 - uv project setup, dependencies, and `uv run`
+- Docker Compose, PostgreSQL, a test database, and `psql`
+- `async` / `await`, async SQLAlchemy sessions, asyncpg
 - FastAPI routes, status codes, and `HTTPException`
-- SQLAlchemy models, sessions, and in-memory test databases
-- Alembic autogenerate and upgrade
+- Async pytest fixtures and httpx's `AsyncClient`
+- Alembic (async template) autogenerate and upgrade
 - Pydantic schemas and `exclude_unset`
 - Vite + React + TypeScript scaffolding, Vitest, React Testing Library
 - Components, props, state, controlled inputs, callback props
@@ -83,7 +118,7 @@ appear. Concepts you already practiced in Tiro get a checklist only.
 **Backend**
 
 - **Configuration from environment variables** — one source of truth
-  for the database URL, used by the app *and* Alembic
+  for the database URLs, used by the app, the tests, *and* Alembic
 - **`monkeypatch`** — changing environment variables inside a test
 - **`APIRouter`** — splitting routes into files by resource
 - **`Literal` types** — restricting a field to fixed values
@@ -91,12 +126,16 @@ appear. Concepts you already practiced in Tiro get a checklist only.
   with `StringConstraints`
 - **Query parameters** — optional filters like `?status=offer`
 - **One-to-many relationships** — `ForeignKey` and `relationship`
+- **Loading related objects in async code** — why lazy loading fails
+  (`MissingGreenlet`), and eager loading with `lazy="selectin"`,
+  `selectinload`, and `refresh`
 - **Nested response schemas** — returning a company inside an
   application
 - **`409 Conflict`** — rejecting duplicates
-- **Constraint naming conventions** — why Alembic needs them
-- **Batch migrations** — changing an existing table in SQLite
-- **SQLite foreign-key enforcement** with a connection event
+- **Constraint naming conventions** — predictable names migrations can
+  rely on
+- **Changing an existing table** in a migration, and resetting a
+  development database with `alembic downgrade base`
 
 **Frontend**
 
@@ -122,16 +161,16 @@ work stays in your repo; the guide stays clean for everyone else.
 
 Then start at [`guide/00-briefing.md`](guide/00-briefing.md).
 
-| # | Lesson | You'll have at the end |
-| --- | --- | --- |
-| 00 | [Briefing](guide/00-briefing.md) | The plan, the contracts, how to use hints |
-| 01 | [Scaffold from memory](guide/01-scaffold.md) | Repo, Husky, backend and frontend skeletons |
-| 02 | [Backend core](guide/02-backend-core.md) | Phase 1: config, routers, validation, filtering — 27 tests |
-| 03 | [Companies and relationships](guide/03-companies.md) | Phase 2: a second table and a batch migration — 35 tests |
-| 04 | [Frontend foundations](guide/04-frontend-foundations.md) | Types, a generic `request`, mocked `fetch` |
-| 05 | [Components](guide/05-components.md) | Four tested components |
-| 06 | [App and error handling](guide/06-app.md) | A fully tested `App` — 38 frontend tests |
-| 07 | [Guardrails and debrief](guide/07-guardrails-and-debrief.md) | Full checks, fresh-clone proof, AAR |
+| # | Lesson | Stories | You'll have at the end |
+| --- | --- | --- | --- |
+| 00 | [Briefing](guide/00-briefing.md) | all | The plan, the contracts, how to use hints |
+| 01 | [Scaffold from memory](guide/01-scaffold.md) | US-5 | Repo, Husky, Docker database, backend and frontend skeletons |
+| 02 | [Backend core](guide/02-backend-core.md) | US-1–5, 7, 9 | Phase 1: config, routers, validation, filtering — 29 tests |
+| 03 | [Companies and relationships](guide/03-companies.md) | US-6 | Phase 2: a second table, async relationships, a migration — 37 tests |
+| 04 | [Frontend foundations](guide/04-frontend-foundations.md) | US-8, 9 | Types, a generic `request`, mocked `fetch` |
+| 05 | [Components](guide/05-components.md) | US-1–4, 6, 7 | Four tested components |
+| 06 | [App and error handling](guide/06-app.md) | US-8 | A fully tested `App` — 38 frontend tests |
+| 07 | [Guardrails and debrief](guide/07-guardrails-and-debrief.md) | all | Full checks, fresh-clone proof, AAR |
 
 Also: [`guide/troubleshooting.md`](guide/troubleshooting.md) and
 [`guide/glossary.md`](guide/glossary.md). Tiro's troubleshooting page
@@ -169,6 +208,7 @@ message), and your operating system.
 ## After Miles
 
 **GRADUS III — Veteranus.** Requirements only: you write the tests
-*and* the code. New layers include PostgreSQL in Docker, a status-history
-table and a data migration, pagination, custom React hooks, and
-continuous integration with GitHub Actions.
+*and* the code. New layers include typed settings with pydantic-settings,
+a test database built by your own migrations, a status-history table and
+a data migration, pagination, custom React hooks, and continuous
+integration with GitHub Actions.

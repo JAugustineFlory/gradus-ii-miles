@@ -1,7 +1,8 @@
 """Phase 1: applications, rebuilt with validation and filtering.
 
 Each test's name says what it checks. Make them pass one group at a
-time, top to bottom.
+time, top to bottom. Every request is awaited: `client` is an httpx
+AsyncClient (see conftest.py).
 """
 
 SAMPLE = {
@@ -11,8 +12,9 @@ SAMPLE = {
 }
 
 
-def create_sample(client, **overrides):
-    response = client.post("/applications", json={**SAMPLE, **overrides})
+async def create_sample(client, **overrides):
+    payload = {**SAMPLE, **overrides}
+    response = await client.post("/applications", json=payload)
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -20,8 +22,8 @@ def create_sample(client, **overrides):
 # --- Create -------------------------------------------------------------
 
 
-def test_create_returns_201_and_the_row(client):
-    response = client.post("/applications", json=SAMPLE)
+async def test_create_returns_201_and_the_row(client):
+    response = await client.post("/applications", json=SAMPLE)
 
     assert response.status_code == 201
     assert response.json() == {
@@ -33,15 +35,15 @@ def test_create_returns_201_and_the_row(client):
     }
 
 
-def test_create_strips_surrounding_whitespace(client):
-    created = create_sample(client, company="  Acme  ", role=" Analyst ")
+async def test_create_strips_surrounding_whitespace(client):
+    created = await create_sample(client, company="  Acme  ", role=" Analyst ")
 
     assert created["company"] == "Acme"
     assert created["role"] == "Analyst"
 
 
-def test_create_rejects_a_blank_company(client):
-    response = client.post(
+async def test_create_rejects_a_blank_company(client):
+    response = await client.post(
         "/applications",
         json={**SAMPLE, "company": "   "},
     )
@@ -49,8 +51,8 @@ def test_create_rejects_a_blank_company(client):
     assert response.status_code == 422
 
 
-def test_create_rejects_a_blank_role(client):
-    response = client.post(
+async def test_create_rejects_a_blank_role(client):
+    response = await client.post(
         "/applications",
         json={**SAMPLE, "role": ""},
     )
@@ -58,8 +60,8 @@ def test_create_rejects_a_blank_role(client):
     assert response.status_code == 422
 
 
-def test_create_rejects_an_unknown_status(client):
-    response = client.post(
+async def test_create_rejects_an_unknown_status(client):
+    response = await client.post(
         "/applications",
         json={**SAMPLE, "status": "ghosted"},
     )
@@ -67,44 +69,50 @@ def test_create_rejects_an_unknown_status(client):
     assert response.status_code == 422
 
 
-def test_create_accepts_every_known_status(client):
+async def test_create_accepts_every_known_status(client):
     for status in ["applied", "interviewing", "offer", "rejected"]:
-        created = create_sample(client, status=status)
+        created = await create_sample(client, status=status)
         assert created["status"] == status
 
 
 # --- List ---------------------------------------------------------------
 
 
-def test_list_starts_empty(client):
-    response = client.get("/applications")
+async def test_list_starts_empty(client):
+    response = await client.get("/applications")
 
     assert response.status_code == 200
     assert response.json() == []
 
 
-def test_list_returns_every_application_in_id_order(client):
-    create_sample(client, company="Acme")
-    create_sample(client, company="Globex")
+async def test_list_returns_every_application_in_id_order(client):
+    await create_sample(client, company="Acme")
+    await create_sample(client, company="Globex")
 
-    response = client.get("/applications")
+    response = await client.get("/applications")
 
     companies = [item["company"] for item in response.json()]
     assert companies == ["Acme", "Globex"]
 
 
-def test_list_can_filter_by_status(client):
-    create_sample(client, company="Acme", status="applied")
-    create_sample(client, company="Globex", status="interviewing")
+async def test_list_can_filter_by_status(client):
+    await create_sample(client, company="Acme", status="applied")
+    await create_sample(client, company="Globex", status="interviewing")
 
-    response = client.get("/applications", params={"status": "interviewing"})
+    response = await client.get(
+        "/applications",
+        params={"status": "interviewing"},
+    )
 
     companies = [item["company"] for item in response.json()]
     assert companies == ["Globex"]
 
 
-def test_list_rejects_an_unknown_status_filter(client):
-    response = client.get("/applications", params={"status": "ghosted"})
+async def test_list_rejects_an_unknown_status_filter(client):
+    response = await client.get(
+        "/applications",
+        params={"status": "ghosted"},
+    )
 
     assert response.status_code == 422
 
@@ -112,17 +120,17 @@ def test_list_rejects_an_unknown_status_filter(client):
 # --- Get one ------------------------------------------------------------
 
 
-def test_get_application_by_id(client):
-    created = create_sample(client)
+async def test_get_application_by_id(client):
+    created = await create_sample(client)
 
-    response = client.get(f"/applications/{created['id']}")
+    response = await client.get(f"/applications/{created['id']}")
 
     assert response.status_code == 200
     assert response.json() == created
 
 
-def test_get_missing_application_returns_404(client):
-    response = client.get("/applications/999")
+async def test_get_missing_application_returns_404(client):
+    response = await client.get("/applications/999")
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Application not found"}
@@ -131,10 +139,10 @@ def test_get_missing_application_returns_404(client):
 # --- Update -------------------------------------------------------------
 
 
-def test_update_changes_only_the_fields_sent(client):
-    created = create_sample(client)
+async def test_update_changes_only_the_fields_sent(client):
+    created = await create_sample(client)
 
-    response = client.patch(
+    response = await client.patch(
         f"/applications/{created['id']}",
         json={"status": "interviewing"},
     )
@@ -145,10 +153,10 @@ def test_update_changes_only_the_fields_sent(client):
     assert body["company"] == "Acme"
 
 
-def test_update_rejects_an_unknown_status(client):
-    created = create_sample(client)
+async def test_update_rejects_an_unknown_status(client):
+    created = await create_sample(client)
 
-    response = client.patch(
+    response = await client.patch(
         f"/applications/{created['id']}",
         json={"status": "ghosted"},
     )
@@ -156,8 +164,8 @@ def test_update_rejects_an_unknown_status(client):
     assert response.status_code == 422
 
 
-def test_update_missing_application_returns_404(client):
-    response = client.patch(
+async def test_update_missing_application_returns_404(client):
+    response = await client.patch(
         "/applications/999",
         json={"status": "offer"},
     )
@@ -168,17 +176,17 @@ def test_update_missing_application_returns_404(client):
 # --- Delete -------------------------------------------------------------
 
 
-def test_delete_removes_the_application(client):
-    created = create_sample(client)
+async def test_delete_removes_the_application(client):
+    created = await create_sample(client)
 
-    response = client.delete(f"/applications/{created['id']}")
+    response = await client.delete(f"/applications/{created['id']}")
 
     assert response.status_code == 204
-    follow_up = client.get(f"/applications/{created['id']}")
+    follow_up = await client.get(f"/applications/{created['id']}")
     assert follow_up.status_code == 404
 
 
-def test_delete_missing_application_returns_404(client):
-    response = client.delete("/applications/999")
+async def test_delete_missing_application_returns_404(client):
+    response = await client.delete("/applications/999")
 
     assert response.status_code == 404

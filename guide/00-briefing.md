@@ -11,7 +11,8 @@ You built a job application tracker in Tiro with a guide beside you for
 every line. The core works, but it has known weak spots — the same ones
 real projects accumulate:
 
-- The database URL lives in two places (`database.py` and `alembic.ini`).
+- The database URLs are hard-coded in three places (`database.py`,
+  `conftest.py`, and `alembic.ini`).
 - Anyone can send `status: "ghosted"` or a company named `"   "`.
 - Every route is in one file.
 - The company is a free-text string, so "Acme" and "ACME" are different
@@ -24,8 +25,25 @@ real projects accumulate:
 Rebuild the tracker **from an empty folder**, test-first, using the
 provided tests as your specification, and fix every weak spot above.
 
-**End state:** 35 backend tests and 38 frontend tests passing, full
-pre-commit checks green, and the app working in the browser.
+**End state:** 37 backend tests and 38 frontend tests passing, full
+pre-commit checks green, and the app working in the browser — on the
+same stack as Tiro (async SQLAlchemy, asyncpg, PostgreSQL in Docker),
+with Miles's database on host port **5434**.
+
+### The user stories
+
+US-1 to US-5 from Tiro (record, see all, update, delete, persist) still
+apply. Miles adds:
+
+| ID | Story | Delivered in |
+| --- | --- | --- |
+| **US-6** | Pick a company from a list instead of retyping it | Lessons 03, 05 |
+| **US-7** | Filter applications by status | Lessons 02, 05, 06 |
+| **US-8** | See a clear message when something fails | Lessons 04, 06 |
+| **US-9** | Have nonsense input refused | Lessons 02, 03, 04 |
+
+Every lesson opens with a **Where this fits** box naming its stories.
+When a contract feels arbitrary, look at the story it serves.
 
 ## Execution
 
@@ -86,8 +104,9 @@ receive props and call callbacks.
 
 Every lesson follows this rhythm:
 
-1. **Contract** — the exact names, shapes, and labels the tests expect.
-   If your code doesn't match the contract, the tests can't find it.
+1. **Contract** — the exact **files**, names, shapes, and labels the
+   tests expect. If your code doesn't match the contract, the tests
+   can't find it.
 2. **Copy the test file in, and run it.** 🔴 Red.
 3. **Connect the dots** — what the step needs and where it comes from.
    Answer the question before reading on.

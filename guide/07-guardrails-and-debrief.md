@@ -1,10 +1,14 @@
 # 07 — Guardrails and debrief
 
+> **Where this fits.** All nine user stories work. This lesson makes sure
+> they keep working (every check before every commit) and that a
+> classmate can run them on their own machine from a fresh clone.
+
 **Goal:** every check running before each commit, proof that a
 classmate can clone and run your repo, and an honest debrief.
 
 This lesson is short on purpose: it's all things you did in Tiro lesson
-08. Use the checklist; open Tiro's lesson only if you're stuck.
+09. Use the checklist; open Tiro's lesson only if you're stuck.
 
 ---
 
@@ -12,25 +16,41 @@ This lesson is short on purpose: it's all things you did in Tiro lesson
 
 ### Checks
 
-- [ ] `.husky/pre-commit` runs, in order: backend lint, frontend lint
-      and types, backend tests, frontend tests
-- [ ] Root `package.json` has a `check` script that runs the hook by
+- [ ] 📄 `.husky/pre-commit` runs, in order: start the database (and
+      wait for healthy), backend lint, frontend lint and types, backend
+      tests, frontend tests
+- [ ] 📄 Root `package.json` has a `check` script that runs the hook by
       hand
 - [ ] `npm run check` passes from the repo root
 
 ### Fresh clone
 
-In a folder **outside** your repo:
+First stop your own database (`docker compose down` in your real
+repo), so the clone can use port 5434. Then, in a folder **outside**
+your repo:
 
 - [ ] Clone your repo and run `npm install` at the root
+- [ ] `docker compose up -d --wait` — a new container and volume, with
+      `miles_test` created by your init script
 - [ ] Backend: `uv sync`, `uv run alembic upgrade head`,
-      `uv run pytest -q` → **35 passed**
+      `uv run pytest -q` → **37 passed**
 - [ ] Frontend: `npm install`, copy `.env.example` to `.env`,
       `npm run test:run` → **38 passed**
 - [ ] Both dev servers start and the app works
 
 If something fails only in the fresh clone, a file is missing from Git
 (or hidden by `.gitignore`). Fix it in your real repo and push.
+
+Clean up: `docker compose down -v` in the clone (removes its container
+**and** volume), delete the folder, and `docker compose up -d --wait`
+in your real repo.
+
+<details>
+<summary>Hint — tests fail with "database miles_test does not exist"</summary>
+
+Check `docker/postgres-init/01-create-test-database.sql` is committed,
+and that `compose.yaml` mounts that folder.
+</details>
 
 <details>
 <summary>Hint — a fresh-clone migration fails</summary>
@@ -42,8 +62,9 @@ work on its own.
 
 ### README
 
-- [ ] A **Running the finished app** section (like Tiro's), now also
-      mentioning the `.env.example` step
+- [ ] 📄 `README.md`: a **Running the finished app** section (like
+      Tiro's), with port 5434, and also mentioning the `.env.example`
+      step
 
 ### Coverage
 
@@ -93,7 +114,8 @@ Without looking:
 - [ ] Add a one-to-many relationship with `ForeignKey` and
       `relationship`
 - [ ] Explain why constraint naming conventions matter to migrations
-- [ ] Explain batch mode and when SQLite needs it
+- [ ] Explain `MissingGreenlet`, and load related objects with
+      `lazy="selectin"`, `selectinload`, and `refresh`
 - [ ] Choose between `404`, `409`, and `422` for a given failure
 - [ ] Write a generic `request<T>()` helper
 - [ ] Mock `fetch` with `vi.spyOn`, and a module with `vi.mock`
@@ -108,7 +130,8 @@ Without looking:
 **requirements only**. No provided tests: you write them first. New
 layers:
 
-- **PostgreSQL in Docker**, and what changes when you leave SQLite
+- **Typed settings** with pydantic-settings, and a test database built
+  by **your own migrations** instead of `create_all`
 - A **status-history** table and a **data migration** that moves
   existing data safely
 - **Pagination** for long lists

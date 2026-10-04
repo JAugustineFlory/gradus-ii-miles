@@ -20,12 +20,6 @@ keeps exact literal types (`'applied'`) instead of widening them
 **Back-populates** [03] — Links the two sides of a SQLAlchemy
 relationship so changing one side updates the other.
 
-**Batch mode** [02] — Alembic's way of changing a SQLite table: build a
-new copy with the change, copy the rows, swap it in.
-
-**Connection event** [03] — Code SQLAlchemy runs every time it opens a
-database connection.
-
 **Constraint** [02] — A rule the database enforces: primary key, unique,
 foreign key, check.
 
@@ -34,6 +28,10 @@ foreign key, check.
 
 **Dependency array** [06] — The list at the end of `useEffect`. The
 effect re-runs whenever a value in it changes.
+
+**Eager loading** [03] — Fetching related objects up front, together
+with the objects that need them, instead of on first access. Required in
+async SQLAlchemy for any relationship your code reads.
 
 **Environment variable** [02] — A named setting provided by the
 environment (terminal, server) rather than written in code.
@@ -48,10 +46,26 @@ state.
 **Generic** [04] — A function or type with a type parameter, like
 `request<T>`, so one implementation works for many types.
 
+**Expunge** [03] — Remove objects from a session's memory
+(`session.expunge_all()`), so the next query must load them fresh from
+the database. The phase 2 model tests use it.
+
 **Lazy loading** [03] — Fetching related objects only when code first
-accesses them.
+accesses them. SQLAlchemy's default — and it fails in async code,
+because the hidden query can't be awaited.
+
+**`lazy="selectin"`** [03] — A relationship setting that eagerly loads
+that relationship for every query, in one extra `SELECT ... WHERE id IN
+(...)` for all the rows at once.
+
+**Loading strategy** [03] — *When* SQLAlchemy fetches related objects:
+lazily (on first access) or eagerly (up front).
 
 **`Literal`** [02] — A Python type allowing only specific values.
+
+**`MissingGreenlet`** [03] — The SQLAlchemy error raised when async
+code touches something that would need a hidden, un-awaited query —
+almost always a related object that was never loaded.
 
 **`monkeypatch`** [02] — A pytest fixture that temporarily changes
 environment variables, attributes, and more, undoing it after the test.
@@ -76,6 +90,14 @@ to many rows (applications), and each of those relates back to one.
 
 **`Promise.all`** [06] — Runs several Promises at once and waits for all
 of them; fails as soon as any one fails.
+
+**Refresh with attribute names** [03] —
+`await db.refresh(obj, ["company"])` reloads just the named attributes
+from the database, including relationships.
+
+**`selectinload`** [03] — A query option that eagerly loads a
+relationship for that one query:
+`select(Company).options(selectinload(Company.applications))`.
 
 **Query parameter** [02] — A value in the URL after `?`, like
 `?status=offer`.

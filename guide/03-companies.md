@@ -1,11 +1,20 @@
 # 03 — Companies and relationships (Phase 2)
 
+> **Where this fits.** **US-6**: *"As a job seeker, I want to pick a
+> company from a list instead of retyping it, so that 'Acme' and 'ACME'
+> don't become two companies."* That needs a `companies` table, with
+> every application pointing at one company. This lesson builds it in
+> the backend; lesson 05 builds the picker on screen. It also extends
+> **US-9** (refuse nonsense): no application can point at a company that
+> doesn't exist.
+
 **Goal:** companies become their own table. Each application belongs to
 one company, the API returns the company nested inside each application,
 and a second migration changes the existing `applications` table.
-**35 tests** green.
+**37 tests** green.
 
-Work in `backend/`.
+Database running (`docker compose up -d --wait` at the repo root); work
+in `backend/`.
 
 ---
 
@@ -15,7 +24,7 @@ Work in `backend/`.
 
 A **foreign key** is a column that holds another table's primary key.
 `applications.company_id = 3` means "this application belongs to the
-company whose `id` is 3." The database can **enforce** it: no
+company whose `id` is 3." PostgreSQL **enforces** it: it refuses any
 `company_id` pointing at a company that doesn't exist.
 
 Why not just keep the company's name as text? Because then "Acme",
@@ -39,20 +48,79 @@ company.applications     → [<Application>, …]   (the other direction)
 `application.company = acme` also adds the application to
 `acme.applications`.
 
-By default, `application.company` isn't loaded until you touch it — then
-SQLAlchemy quietly runs a second query. That's called **lazy loading**.
-It's simple and fine at this size; GRADUS III looks at when it becomes a
-problem.
-
 Docs:
 <https://docs.sqlalchemy.org/en/20/orm/basic_relationships.html#one-to-many>
+
+### Loading related objects in async code
+
+This is the concept that catches almost everyone, so read it twice.
+
+When you load an application, its company is in a **different table**.
+Getting it means a **second query**. *When* that query runs is called
+the **loading strategy**:
+
+| Strategy | When the company is fetched | In async code |
+| --- | --- | --- |
+| **Lazy** (the default) | The moment your code first touches `application.company` | ❌ **Fails** |
+| **`selectin`** (eager) | Right after the applications themselves, in one extra query for all of them | ✅ Works |
+
+Why does lazy loading fail? Touching an attribute is plain Python —
+`application.company` — with **no `await`**. But a query *must* be
+awaited in async code. SQLAlchemy can't sneak an `await` in, so it
+raises:
+
+```text
+sqlalchemy.exc.MissingGreenlet: greenlet_spawn has not been called;
+can't call await_only() here.
+```
+
+When you see `MissingGreenlet`, read it as: **"you touched a related
+object that was never loaded."**
+
+The fix is to load it **eagerly** — ask for it up front, while you're
+already awaiting. Two ways:
+
+1. **On the relationship, for every query:**
+
+   ```python
+   company: Mapped[Company] = relationship(..., lazy="selectin")
+   ```
+
+   Good when you *always* need it. An application is never shown
+   without its company, so this fits `Application.company`.
+
+2. **On one query, when you ask for it:**
+
+   ```python
+   select(Company).options(selectinload(Company.applications))
+   ```
+
+   Good when you only *sometimes* need it. A company's whole list of
+   applications is rarely needed, so `Company.applications` stays lazy
+   and individual queries opt in. Read
+   `starter-tests/backend/phase-2/tests/test_models.py`, test 2 — it
+   does exactly this.
+
+One more case: after a **commit that changes `company_id`**, the
+`company` attribute still points at the *old* company object. A
+**refresh** reloads it:
+
+```python
+await db.refresh(application, ["company"])
+```
+
+The optional second argument names which attributes to reload.
+
+Docs:
+<https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#preventing-implicit-io-when-using-asyncsession>
 
 ### Nested response schemas
 
 A Pydantic schema can have a field whose type is *another schema*.
 Because `ApplicationRead` has `from_attributes=True`, Pydantic reads
 `application.company` (the relationship) and builds a `CompanyRead` from
-it automatically.
+it automatically. **That's an attribute access** — so the company must
+already be loaded, or serializing the response raises `MissingGreenlet`.
 
 ---
 
@@ -78,12 +146,26 @@ This **overwrites** `test_models.py` and `test_applications.py`, and adds
 
 ### Contract
 
+📄 `backend/app/models.py`:
+
 - **`Company`** — table `companies`: `id` (primary key), `name`
   (string, 100, **unique**), `applications` (relationship to
-  `Application`).
+  `Application`; default lazy loading).
 - **`Application`** — remove the `company` string column. Add
   `company_id` (foreign key to `companies.id`, required) and `company`
-  (relationship to `Company`). Both relationships use `back_populates`.
+  (relationship to `Company`, **`lazy="selectin"`**). Both relationships
+  use `back_populates`.
+
+### Connect the dots
+
+Read the three tests in `tests/test_models.py`:
+
+- Test 2 loads a company and its applications with `selectinload`. That
+  works whatever `Company.applications`'s strategy is.
+- Test 3 loads an application with a **plain** `select`, then reads
+  `saved.company.name`. `session.expunge_all()` (line before the query)
+  empties the session, so nothing is already in memory. *Which
+  strategy must `Application.company` have for that to work?*
 
 ### Pseudocode
 
@@ -97,7 +179,8 @@ class Company(Base):
 class Application(Base):
     ... (id, role, status, applied_on as before, no more "company" string)
     company_id: int — ForeignKey to "companies.id"
-    company: Company — relationship, back-populates "applications"
+    company: Company — relationship, back-populates "applications",
+                       loaded eagerly with "selectin"
 ```
 
 `Company` refers to `Application` before `Application` is defined. With
@@ -113,99 +196,76 @@ typed relationships, write the type as a string —
 <details>
 <summary>Hint 2 — the relationship lines</summary>
 
+On `Company`:
+
 ```python
 applications: Mapped[list["Application"]] = relationship(
     back_populates="company",
 )
 ```
 
-and on `Application`:
+On `Application`:
 
 ```python
 company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"))
-company: Mapped[Company] = relationship(back_populates="applications")
+company: Mapped[Company] = relationship(
+    back_populates="applications",
+    lazy="selectin",
+)
 ```
+</details>
+
+<details>
+<summary>Hint 3 — test 3 fails with MissingGreenlet</summary>
+
+`Application.company` is missing `lazy="selectin"`. Without it, reading
+`saved.company` tries to lazy-load.
 </details>
 
 🟢 `test_models.py` passes (3 tests). Everything using the API still
 fails. Commit: `feat(backend): company model and relationship`.
 
----
-
-## Step 3 — Make SQLite enforce foreign keys
-
-Surprise: **SQLite ignores foreign keys by default**, for
-backward-compatibility reasons. Without the next step, it would happily
-store `company_id = 999`.
-
-### New concept: connection events
-
-SQLAlchemy can run your code every time it opens a database connection.
-You'll use that to send SQLite the command `PRAGMA foreign_keys=ON`.
-
-### Contract
-
-In `app/database.py`, a function registered with
-`@event.listens_for(Engine, "connect")` that turns on foreign keys —
-**only when the connection is SQLite**.
-
-### Pseudocode
-
-```text
-when any engine opens a new connection (dbapi_connection, record):
-    if the connection is a sqlite3 connection:
-        open a cursor
-        execute "PRAGMA foreign_keys=ON"
-        close the cursor
-```
-
-Why the SQLite check? In GRADUS III you switch to PostgreSQL, which
-enforces foreign keys already — and doesn't understand `PRAGMA`.
-
-<details>
-<summary>Hint</summary>
-
-Imports: `import sqlite3`, `from sqlalchemy import event`,
-`from sqlalchemy.engine import Engine`. The check is
-`isinstance(dbapi_connection, sqlite3.Connection)`.
-</details>
-
 ### Your first self-written test (optional, recommended)
 
-No provided test checks this — so write one. In `tests/test_models.py`,
-add a test that:
+No provided test checks that PostgreSQL enforces the foreign key — so
+write one. 📄 In `backend/tests/test_models.py`, add a test at the
+**end of the file** that:
 
 1. adds an `Application` with `company_id=999` (no such company) to the
-   `session` and commits;
-2. expects an **`IntegrityError`** (from `sqlalchemy.exc`).
+   `session`;
+2. expects **`await session.commit()`** to raise an **`IntegrityError`**
+   (from `sqlalchemy.exc`).
 
-Remove the event listener and the test should fail; put it back and it
-passes. That's how you know your test tests something.
+To prove it can fail: temporarily remove `ForeignKey("companies.id")`
+from the model (the test fixtures build tables from the models), run
+it, watch it fail, then put it back.
 
 <details>
 <summary>Hint</summary>
 
-`with pytest.raises(IntegrityError):` wraps code that must raise.
+```text
+with pytest.raises(IntegrityError):
+    await session.commit()
+```
+
 Docs: <https://docs.pytest.org/en/stable/how-to/assert.html#assertions-about-expected-exceptions>
 </details>
 
-Docs: <https://docs.sqlalchemy.org/en/20/dialects/sqlite.html#foreign-key-support>
-
 ---
 
-## Step 4 — The companies router
+## Step 3 — The companies router
 
 ### Contract
 
-Schemas in `app/schemas.py`:
+📄 `backend/app/schemas.py` — add:
 
 | Schema | Fields |
 | --- | --- |
 | `CompanyCreate` | `name: CleanStr` |
 | `CompanyRead` | `id`, `name`; `from_attributes` |
 
-`app/routers/companies.py` with prefix `/companies`, included in
-`main.py`:
+📄 `backend/app/routers/companies.py` with prefix `/companies`, included
+in `backend/app/main.py`:
 
 | Endpoint | Behavior |
 | --- | --- |
@@ -233,18 +293,24 @@ backstop if two requests race each other. Either can produce the `409`;
 ### Pseudocode (check-first version)
 
 ```text
-function create_company(payload, db):
+async function create_company(payload, db):
     existing = first company where name == payload.name, or None
     if existing:
         raise 409 "Company already exists"
-    add, commit, refresh, return the new company
+    add, await commit, await refresh, return the new company
 ```
 
 <details>
 <summary>Hint 1 — find one or none</summary>
 
-`db.scalars(select(models.Company).where(...)).first()` returns the
-first match or `None`.
+```python
+result = await db.scalars(
+    select(models.Company).where(models.Company.name == payload.name)
+)
+existing = result.first()
+```
+
+`.first()` returns the first match, or `None`.
 </details>
 
 <details>
@@ -258,11 +324,11 @@ companies endpoints`.
 
 ---
 
-## Step 5 — Applications belong to companies
+## Step 4 — Applications belong to companies
 
 ### Contract
 
-Schema changes:
+📄 `backend/app/schemas.py` changes:
 
 | Schema | Change |
 | --- | --- |
@@ -270,10 +336,12 @@ Schema changes:
 | `ApplicationUpdate` | `company` becomes `company_id: int \| None = None` |
 | `ApplicationRead` | `company` becomes `company: CompanyRead`. **No `company_id` field** — the tests compare the whole object |
 
-Router changes:
+📄 `backend/app/routers/applications.py` changes:
 
 - **Create** and **update** return `422` with detail exactly
   `"Company not found"` when a given `company_id` doesn't exist.
+- **Create** and **update** return the application **with its company
+  loaded** (see "Loading related objects in async code").
 - **List** accepts an optional `company_id` query parameter, and both
   filters can be combined.
 
@@ -285,26 +353,32 @@ Router changes:
   at nothing.
 - In **update**, only check the company if the client actually sent a
   `company_id`. Where did you learn which fields were sent? (Tiro lesson
-  05, Cycle 5.)
+  06, Cycle 5.)
+- After **update** moves an application to another company, which
+  attribute is now stale? (See the end of "Loading related objects.")
 - Filters stack: each `.where(...)` narrows the query further.
 
 ### Pseudocode
 
 ```text
-function require_company(db, company_id):
-    company = get Company by id
+async function require_company(db, company_id):
+    company = await get Company by id
     if none: raise 422 "Company not found"
     return company
 
 create:
-    require_company(db, payload.company_id)
-    ... create as before
+    await require_company(db, payload.company_id)
+    add, await commit
+    await refresh the application, including "company"
+    return it
 
 update:
     changes = fields actually sent
     if "company_id" in changes:
-        require_company(db, changes["company_id"])
-    ... apply changes as before
+        await require_company(db, changes["company_id"])
+    apply changes, await commit
+    await refresh the application, including "company"
+    return it
 
 list(status = None, company_id = None):
     query = applications ordered by id
@@ -328,45 +402,66 @@ Compare the test's expected dictionary with what you return. Is
 — Pydantic reads the nested object the same way.
 </details>
 
-🟢 **`35 passed`**, 100% coverage. Commit: `feat(backend): applications
+<details>
+<summary>Hint 3 — MissingGreenlet when returning from create or update</summary>
+
+The company wasn't loaded on the object you're returning. After the
+commit: `await db.refresh(application, ["company"])`.
+</details>
+
+<details>
+<summary>Hint 4 — moving to another company still shows the old one</summary>
+
+Same fix: refresh `"company"` after the commit, so the relationship
+follows the new `company_id`.
+</details>
+
+🟢 **`37 passed`**, 100% coverage. Commit: `feat(backend): applications
 belong to companies`.
 
 ---
 
-## Step 6 — The second migration
+## Step 5 — The second migration
 
 ### ⚠️ Reset your development database first
 
 This migration adds a **required** `company_id` column to
-`applications`. Any rows already in your `miles.db` have no value for
-it, so the migration would fail on them. Converting old free-text
-company names into company rows is a **data migration** — a GRADUS III
-skill. For now, start clean:
+`applications`. Any rows already in your development database have no
+value for it, so the migration would fail on them. Converting old
+free-text company names into company rows is a **data migration** — a
+GRADUS III skill. For now, start clean:
 
 ```bash
 uv run alembic downgrade base
 ```
 
-`base` means "before the first migration": every table is dropped.
+`base` means "before the first migration": every table Alembic created
+is dropped.
 
 ### Generate, read, apply
 
 ```bash
+uv run alembic upgrade head
 uv run alembic revision --autogenerate -m "add companies"
 ```
 
-Open the new file and **read it**. You should find:
+(The `upgrade head` re-applies your first migration, so the database is
+at the latest revision before autogenerate compares it to the models.)
+
+Open the new file in `backend/migrations/versions/` and **read it**. You
+should find, in `upgrade()`:
 
 - `op.create_table('companies', ...)` including a unique constraint
   named `uq_companies_name` — your naming convention at work
-- a `with op.batch_alter_table('applications') as batch_op:` block that:
-  - adds `company_id`
-  - creates a foreign key named `fk_applications_company_id_companies`
-  - drops the old `company` column
-- a `downgrade()` that undoes all of it in reverse order
+- `op.add_column('applications', ...)` adding `company_id`
+- `op.create_foreign_key(...)` named
+  `fk_applications_company_id_companies`
+- `op.drop_column('applications', 'company')`
 
-If the foreign key's name is `None`, your naming convention isn't being
-used — check `Base` in `database.py`.
+…and a `downgrade()` that undoes all of it in reverse order.
+
+If a constraint's name is `None`, your naming convention isn't being
+used — check `Base` in `backend/app/database.py`.
 
 ```bash
 uv run alembic upgrade head
@@ -377,7 +472,16 @@ uv run alembic upgrade head
 ✅ All three succeed. Testing the downgrade *now*, while it's fresh, is
 cheaper than discovering it's broken when you need it.
 
-### Try it
+Check it in `psql` (repo root):
+
+```bash
+docker compose exec db psql -U miles -d miles -c "\d applications"
+```
+
+✅ Under **Foreign-key constraints**:
+`fk_applications_company_id_companies`.
+
+### Try it (US-6)
 
 `uv run fastapi dev app/main.py`, then in `/docs`:
 
@@ -405,33 +509,39 @@ refers to something that doesn't exist, so the request can't be
 processed: `422`.
 </details>
 
-**2. Why does the migration use `batch_alter_table`?**
+**2. What does `MissingGreenlet` almost always mean in this project?**
 
 <details>
 <summary>Answer</summary>
 
-SQLite can't add a foreign key to, or drop a column from, an existing
-table in place. Batch mode rebuilds the table with the changes and
-copies the rows across.
+Code touched a related object that hadn't been loaded, so SQLAlchemy
+tried to lazy-load it — a query without an `await`, which async code
+can't do. Load it eagerly (`lazy="selectin"`, `selectinload`) or refresh
+it.
 </details>
 
-**3. What would happen without `PRAGMA foreign_keys=ON`?**
+**3. Why `lazy="selectin"` on `Application.company`, but not on
+`Company.applications`?**
 
 <details>
 <summary>Answer</summary>
 
-SQLite would accept `company_id` values that point at no company. The
-API's own check would still catch it, but anything writing to the
-database another way (a script, a future bug) could store broken data.
+Every application response includes its company, so always loading it is
+right. A company's full list of applications is rarely needed; loading
+it every time would be wasted work, so individual queries opt in with
+`selectinload`.
 </details>
 
-**4. What is lazy loading?**
+**4. The API checks `company_id` itself. Why does the foreign key in the
+database still matter?**
 
 <details>
 <summary>Answer</summary>
 
-Related objects (like `application.company`) aren't fetched until the
-code first uses them; then SQLAlchemy runs an extra query on the spot.
+The API check only protects requests that go through the API. A script,
+a future bug, or a direct `psql` session could still store a broken
+`company_id`. The foreign key makes the database refuse it no matter
+where it comes from.
 </details>
 
 Next: [04 — Frontend foundations](04-frontend-foundations.md)

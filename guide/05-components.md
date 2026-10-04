@@ -1,5 +1,16 @@
 # 05 — Components
 
+> **Where this fits.** These are the screens the job seeker actually
+> touches. Each component delivers part of a story; `App` (lesson 06)
+> connects them to the API.
+>
+> | Component | Story |
+> | --- | --- |
+> | `StatusFilter` | **US-7** filter by status |
+> | `CompanyForm` | **US-6** build the list of companies (and **US-9**: no blank names) |
+> | `ApplicationList` | **US-2** see all, **US-3** update status, **US-4** delete |
+> | `ApplicationForm` | **US-1** record, with **US-6**'s company picker |
+
 **Goal:** four presentational components, each driven by its provided
 test file: `StatusFilter`, `CompanyForm`, `ApplicationList`, and
 `ApplicationForm`. **27 frontend tests** green at the end.
@@ -13,9 +24,12 @@ mkdir -p src/components
 
 ---
 
-## Component 1 — `StatusFilter` (new)
+## Component 1 — `StatusFilter` (new, US-7)
 
 ### Contract
+
+📄 `frontend/src/components/StatusFilter.tsx` — **new**. Exports
+`StatusFilter` and the type `StatusFilterValue`.
 
 ```text
 StatusFilter({ value, onChange })
@@ -72,9 +86,12 @@ only possible values are the options you rendered.
 
 ---
 
-## Component 2 — `CompanyForm` (new)
+## Component 2 — `CompanyForm` (new, US-6)
 
 ### Contract
+
+📄 `frontend/src/components/CompanyForm.tsx` — **new**. Exports
+`CompanyForm`.
 
 ```text
 CompanyForm({ onSubmit })
@@ -123,9 +140,12 @@ JavaScript strings have a `.trim()` method.
 
 ---
 
-## Component 3 — `ApplicationList` (Tiro repeat, new shape)
+## Component 3 — `ApplicationList` (Tiro repeat, new shape; US-2, 3, 4)
 
 ### Contract
+
+📄 `frontend/src/components/ApplicationList.tsx` — **new**. Exports
+`ApplicationList`. (Tiro lesson 08, Step 2.)
 
 ```text
 ApplicationList({ applications, onDelete, onStatusChange })
@@ -174,9 +194,12 @@ application. If you get more, the company name appears in extra places
 
 ---
 
-## Component 4 — `ApplicationForm` (Tiro repeat, new field)
+## Component 4 — `ApplicationForm` (Tiro repeat, new field; US-1, 6)
 
 ### Contract
+
+📄 `frontend/src/components/ApplicationForm.tsx` — **new**. Exports
+`ApplicationForm`. (Tiro lesson 08, Step 3.)
 
 ```text
 ApplicationForm({ companies, onSubmit })
